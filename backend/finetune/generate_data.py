@@ -81,12 +81,22 @@ def main() -> int:
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
+    question_templates = [
+        "Can you explain {c}?",
+        "What is {c}?",
+        "Help me understand {c}.",
+        "I'm confused about {c}. Can you walk me through it?",
+        "How does {c} work?",
+        "Give me a quick rundown of {c}.",
+    ]
+
     rows = []
     i = 0
     while len(rows) < args.n:
         concept, body = pairs[i % len(pairs)]
+        template = question_templates[(i // len(pairs)) % len(question_templates)]
         i += 1
-        question = f"Can you explain {concept}?"
+        question = template.format(c=concept)
         if client is None:
             target = _mock_target(concept, body)
         else:

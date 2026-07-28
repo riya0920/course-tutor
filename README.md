@@ -108,7 +108,7 @@ The caching prefix has to clear the model's minimum cacheable length (1024 token
 
 ### Fine-tuning (optional)
 
-`backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune GPT-4o-mini on the explanation style, and score base vs. tuned with an LLM judge. The sidebar has an "Explain a concept" card with a base/tuned toggle so you can compare the two side by side rather than just claim it. This part needs an OpenAI key and costs a few dollars to run.
+`backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune a small model on the explanation style, and score base vs. tuned with an LLM judge. The sidebar has an "Explain a concept" card with a base/tuned toggle so you can compare the two side by side. Data generation and the judge eval both run; the training step targeted OpenAI's GPT-4o-mini, but OpenAI has since wound down self-serve fine-tuning, so completing the run now needs a provider that still offers it (Gemini or Vertex tuning, Together, Fireworks, etc.). The scripts are written against the OpenAI SDK and would point at any OpenAI-compatible fine-tuning endpoint.
 
 ### Tracing
 

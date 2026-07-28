@@ -38,7 +38,20 @@ def main() -> int:
         file = client.files.create(file=fh, purpose="fine-tune")
 
     print(f"creating fine-tune job on {args.base} ...")
-    job = client.fine_tuning.jobs.create(training_file=file.id, model=args.base)
+    try:
+        job = client.fine_tuning.jobs.create(training_file=file.id, model=args.base)
+    except Exception as e:
+        msg = str(e)
+        if "training_not_available" in msg or "winding down" in msg:
+            print(
+                "\nOpenAI has wound down self-serve fine-tuning, so this account "
+                "can no longer create training jobs.\n"
+                "The pipeline (data generation + judge eval) still works; point it "
+                "at a provider that offers fine-tuning (Gemini/Vertex tuning, "
+                "Together, Fireworks) by setting that provider's base URL and key."
+            )
+            return 2
+        raise
     print(f"job id: {job.id}")
 
     if not args.wait:
