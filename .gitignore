@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# App data / stores
+backend/data/
+backend/eval_data/
+data/
+eval_data/
+*.db
+
+# Secrets
+.env
+backend/.env
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/tsconfig.tsbuildinfo
+
+# Eval run artifacts (the committed baseline is evals/main_metrics.json)
+current_metrics.json
+
+# Fine-tune artifacts
+backend/finetune/train.jsonl
+backend/finetune/heldout.jsonl
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,57 @@
+name: CI
+
+# The eval suite is a deploy gate: lint, tests, then the eval harness compared
+# against main's committed baseline. Merge is blocked if groundedness or
+# off-syllabus handling regresses > 2 points.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install (minimal — runs in mock mode, no heavy ML downloads)
+        run: |
+          pip install -r requirements-min.txt
+          pip install pytest httpx ruff
+
+      - name: Lint
+        run: ruff check app evals finetune || true  # advisory for now
+
+      - name: Unit + integration tests (mock mode)
+        env:
+          ANTHROPIC_API_KEY: ""
+        run: pytest -q
+
+      - name: Eval harness — guardrails OFF vs ON baseline
+        env:
+          ANTHROPIC_API_KEY: ""
+        run: python -m evals.run_evals --baseline --out current_metrics.json
+
+      - name: Eval gate vs main baseline
+        env:
+          ANTHROPIC_API_KEY: ""
+        run: python -m evals.run_evals --gate evals/main_metrics.json
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - run: npm run build

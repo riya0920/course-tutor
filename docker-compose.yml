@@ -1,0 +1,20 @@
+# Local one-command run of the backend. The frontend runs separately with
+# `npm run dev` (its Vite proxy points at localhost:8000).
+services:
+  api:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Leave ANTHROPIC_API_KEY empty to run in offline mock mode.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TUTOR_MODEL: ${TUTOR_MODEL:-claude-opus-5}
+      GUARDRAILS_ENABLED: "true"
+      CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+      DATA_DIR: /data
+    volumes:
+      - tutor-data:/data
+
+volumes:
+  tutor-data:

@@ -1,0 +1,22 @@
+# Render blueprint. Push to GitHub, then "New > Blueprint" and point at this repo.
+services:
+  - type: web
+    name: course-tutor-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # set in the Render dashboard (secret)
+      - key: TUTOR_MODEL
+        value: claude-opus-5
+      - key: GUARDRAILS_ENABLED
+        value: "true"
+      - key: CORS_ORIGINS
+        sync: false          # set to your Vercel URL, e.g. https://course-tutor.vercel.app
+    disk:
+      name: tutor-data
+      mountPath: /data
+      sizeGB: 1

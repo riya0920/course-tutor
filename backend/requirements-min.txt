@@ -1,0 +1,7 @@
+# Minimal install: runs the full app in offline mock mode + hashing retrieval,
+# with no heavy ML downloads. Good for CI and quick local demos.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-multipart==0.0.20
+anthropic>=0.40.0
