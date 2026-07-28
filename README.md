@@ -8,7 +8,7 @@ A study tool for your own course material. You upload a PDF or markdown file and
 
 Live demo: https://course-tutor.vercel.app
 
-It's preloaded with a small sample ML course, so you can try it without uploading anything. The backend runs on Render's free tier and goes to sleep when nobody's using it, so the first request after an idle spell takes 30-60s to wake up. After that it's quick.
+It's preloaded with a small sample ML course, so you can try it without uploading anything. The backend runs on Render's free tier and goes to sleep when nobody's using it, so the first request after an idle spell takes 30 to 60 seconds to wake up. After that it's quick.
 
 The frontend is on Vercel, the backend on Render, and answers currently come from Gemini 2.5 Flash.
 
@@ -31,21 +31,21 @@ npm install
 npm run dev        # localhost:5180, proxies API calls to :8000
 ```
 
-You don't need an API key to run it. With no key set, the backend serves canned responses and uses a hashing-based retriever instead of real embeddings, so the whole thing works offline for development. `GET /health` tells you which mode you're in. To get real answers, put a key in `backend/.env` (copy `.env.example`) — either `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` works.
+You don't need an API key to run it. With no key set, the backend serves canned responses and uses a hashing-based retriever instead of real embeddings, so the whole thing works offline for development. `GET /health` tells you which mode you're in. To get real answers, put a key in `backend/.env` (copy `.env.example`); either `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` works.
 
 ## How it works
 
-The frontend is React + TypeScript + Tailwind (Vite). The backend is FastAPI. Chat is streamed over SSE so answers show up token by token.
+The frontend is React with TypeScript and Tailwind (Vite). The backend is FastAPI. Chat is streamed over SSE so answers show up token by token.
 
-When you send a message, the backend retrieves the most relevant chunks of your document, builds a prompt around them, and streams back the model's answer. After the answer, it runs a grounding check — it looks up whether the claims are actually supported by a chunk above a similarity threshold — and returns the citations plus some per-request stats (time to first token, token counts) that show up under each message.
+When you send a message, the backend retrieves the most relevant chunks of your document, builds a prompt around them, and streams back the model's answer. After the answer, it runs a grounding check that looks up whether the claims are actually supported by a chunk above a similarity threshold, then returns the citations plus some per-request stats (time to first token, token counts) that show up under each message.
 
-Document handling is the usual pipeline: PyMuPDF pulls text out of PDFs, it gets chunked with overlap, embedded, and stored. Embeddings use `all-MiniLM-L6-v2` and the store is ChromaDB when they're installed; if they're not, it falls back to a lightweight hashing embedder and an in-memory store. That fallback is what lets it run with no setup, and it's also what the free deployment uses (the full ML stack won't fit in 512MB of RAM).
+Document handling is the usual pipeline. PyMuPDF pulls text out of PDFs, it gets chunked with overlap, embedded, and stored. Embeddings use `all-MiniLM-L6-v2` and the store is ChromaDB when they're installed; if they're not, it falls back to a lightweight hashing embedder and an in-memory store. That fallback is what lets it run with no setup, and it's also what the free deployment uses, since the full ML stack won't fit in 512MB of RAM.
 
 Quiz generation and grading go through tool calls and every result is validated against a Pydantic schema before it reaches the UI. If validation fails it retries once and then errors loudly rather than shipping something malformed. Grading is checked server-side against the stored answer key so the client can't be trusted with it, and each attempt is written to SQLite, which is where the mastery view comes from.
 
 ### LLM provider
 
-`LLM_PROVIDER` defaults to `auto`, which uses Anthropic if `ANTHROPIC_API_KEY` is set, otherwise Gemini if `GEMINI_API_KEY` is set, otherwise the offline mock. Gemini goes through its OpenAI-compatible endpoint (with thinking turned off, since a yes/no classifier doesn't need it and it was eating the token budget). The live demo runs on Gemini because it's free; the prompt-caching work is Anthropic-specific, so if you set an Anthropic key you get the cached-prefix behaviour and the cache-hit numbers in the footer.
+`LLM_PROVIDER` defaults to `auto`, which uses Anthropic if `ANTHROPIC_API_KEY` is set, otherwise Gemini if `GEMINI_API_KEY` is set, otherwise the offline mock. Gemini goes through its OpenAI-compatible endpoint, with thinking turned off since a yes/no classifier doesn't need it and it was eating the token budget. The live demo runs on Gemini because it's free. The prompt-caching work is Anthropic-specific, so if you set an Anthropic key you get the cached-prefix behaviour and the cache-hit numbers in the footer.
 
 ### Guardrails
 
@@ -84,8 +84,4 @@ The numbers you get in mock mode are placeholders. Run it with a real key to get
 - One document per session.
 - Chat history lives in memory, so it resets if the backend restarts. Quiz attempts and mastery are in SQLite.
 - The free deployment doesn't have a persistent disk, so uploads reset on a cold start. The sample course re-seeds itself on boot.
-- The eval set is small right now (18 questions). It's meant to grow to ~100; the work there is checking each item by hand, not generating more.
-
-## Notes
-
-This was built with Claude Code; `docs/BUILT_WITH_CLAUDE_CODE.md` has some notes on how it went, including a couple of bugs worth remembering (the config values were being read at import time, which quietly broke the guardrails-on/off comparison until the eval output looked suspicious).
+- The eval set is small right now (18 questions). It's meant to grow to about 100; the work there is checking each item by hand, not generating more.
