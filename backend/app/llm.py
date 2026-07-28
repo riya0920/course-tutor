@@ -143,6 +143,7 @@ class LLM:
         context_chunks: list[Chunk],
         history: list[dict],
         result: ChatResult,
+        session_id: str = "",
     ) -> Iterator[str]:
         if self.provider == "mock":
             yield from self._mock_chat(message, context_chunks, result)
@@ -158,18 +159,28 @@ class LLM:
                 yield from self._mock_chat(message, context_chunks, result)
             return
 
-        context = _format_context(context_chunks)
-        # Cached prefix = frozen system prompt + course-context digest.
-        # Volatile conversation goes in `messages`, after the cache breakpoint.
+        # Cached prefix = frozen system prompt + a STABLE course digest (same
+        # every turn, so Anthropic prompt caching reuses it). The per-turn
+        # retrieved chunks are volatile, so they go in the (uncached) user
+        # message alongside the question, after the cache breakpoint.
+        from . import rag
+
+        digest = rag.course_digest(session_id) if session_id else _format_context(context_chunks)
+        retrieved = _format_context(context_chunks)
         system = [
             {"type": "text", "text": TUTOR_SYSTEM},
             {
                 "type": "text",
-                "text": "Course context:\n" + context,
+                "text": "Course reference material:\n" + digest,
                 "cache_control": {"type": "ephemeral"},
             },
         ]
-        messages = history + [{"role": "user", "content": message}]
+        user_turn = (
+            f"Relevant excerpts for this question:\n{retrieved}\n\nQuestion: {message}"
+            if retrieved
+            else message
+        )
+        messages = history + [{"role": "user", "content": user_turn}]
 
         with self._client.messages.stream(
             model=self.settings.tutor_model,

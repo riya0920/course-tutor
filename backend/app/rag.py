@@ -246,3 +246,31 @@ def has_corpus(session_id: str) -> bool:
         except Exception:
             return False
     return _mem.count(session_id) > 0
+
+
+def course_digest(session_id: str, max_chars: int = 12000) -> str:
+    """A STABLE snapshot of the course text for this session, in a fixed order.
+
+    This is what goes in the cached prompt prefix: because it does not change
+    from turn to turn, Anthropic prompt caching can reuse it. Per-turn retrieved
+    chunks go in the (uncached) message instead. Capped so a large upload
+    doesn't blow up the prompt.
+    """
+    client = _get_chroma()
+    texts: list[str] = []
+    if client is not None:  # pragma: no cover
+        try:
+            got = client.get_collection(_collection_name(session_id)).get()
+            texts = got.get("documents", []) or []
+        except Exception:
+            texts = []
+    else:
+        texts = [c.text for c in _mem.collections.get(session_id, [])]
+
+    out, total = [], 0
+    for t in texts:
+        if total + len(t) > max_chars:
+            break
+        out.append(t)
+        total += len(t)
+    return "\n\n".join(out)

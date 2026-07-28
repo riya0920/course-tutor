@@ -70,7 +70,9 @@ async def chat(req: ChatRequest):
         result = ChatResult()
         answer_parts: list[str] = []
         ttft_ms = None
-        for text in get_llm().stream_chat(req.message, chunks, history, result):
+        for text in get_llm().stream_chat(
+            req.message, chunks, history, result, session_id=req.session_id
+        ):
             if ttft_ms is None:
                 ttft_ms = (time.time() - t0) * 1000
             answer_parts.append(text)
