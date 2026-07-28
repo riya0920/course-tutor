@@ -110,7 +110,9 @@ The caching prefix has to clear the model's minimum cacheable length (1024 token
 
 `backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune a small model on the explanation style, and score base vs. tuned. The sidebar has an "Explain a concept" card with a base/tuned toggle so you can compare the two side by side.
 
-There are two ways to run the training. The OpenAI SDK scripts (`generate_data.py`, `run_finetune.py`, `evaluate.py`) targeted GPT-4o-mini, but OpenAI has since wound down self-serve fine-tuning, so that path needs a provider that still offers it. The self-contained path is `finetune/colab_finetune.ipynb`: a Colab notebook that LoRA fine-tunes Qwen2.5-0.5B on the generated pairs using a free GPU and scores base vs. tuned on a structure rubric. Open it in Colab, set a GPU runtime, and run all (about 15-20 minutes).
+There are two ways to run the training. The OpenAI SDK scripts (`generate_data.py`, `run_finetune.py`, `evaluate.py`) targeted GPT-4o-mini, but OpenAI has since wound down self-serve fine-tuning, so that path needs a provider that still offers it. The self-contained path is `finetune/colab_finetune.ipynb`: a Colab notebook that LoRA fine-tunes Qwen2.5-0.5B on the generated pairs using a free GPU and scores base vs. tuned on a structure rubric.
+
+Honest finding from running it: a 0.5B model on ~90 templated examples is unstable to fine-tune. There's a narrow band between undertraining (the model barely changes) and overfitting (loss collapses and generations degenerate into empty or repeated text), and the base Qwen model already follows the structure prompt well, so the bar to beat it is high. Getting a clean positive base-vs-tuned number needs a larger model and more varied, less templated data. The pipeline itself (generate, train, generate base vs tuned, score) runs end to end; the limitation is the toy scale, not the wiring.
 
 ### Tracing
 

@@ -75,11 +75,13 @@ def main() -> int:
     base_model = settings.openai_base_model
 
     if not os.getenv("OPENAI_API_KEY") or not tuned_model:
-        # Mock: illustrative numbers so the pipeline runs offline.
-        print("(mock) OPENAI_API_KEY / FINETUNED_MODEL not set — illustrative scores")
-        print(f"base ({base_model})   avg judge score: 3.6")
-        print(f"tuned ({tuned_model or 'ft:...'}) avg judge score: 4.3")
-        print("\nReplace these with real numbers by setting the keys and re-running.")
+        print(
+            "No OpenAI key or FINETUNED_MODEL set, so there is nothing to score.\n"
+            "OpenAI has wound down self-serve fine-tuning; to produce real base-vs-"
+            "tuned numbers, run finetune/colab_finetune.ipynb (free GPU) or point\n"
+            "FINETUNED_MODEL at a model tuned on another provider.\n"
+            "No placeholder scores are printed on purpose."
+        )
         return 0
 
     from openai import OpenAI
