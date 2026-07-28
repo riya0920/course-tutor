@@ -19,7 +19,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false          # set in the Render dashboard (secret)
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-2.0-flash
       - key: GUARDRAILS_ENABLED
         value: "true"
       - key: CORS_ORIGINS

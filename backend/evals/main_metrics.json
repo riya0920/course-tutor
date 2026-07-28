@@ -2,9 +2,9 @@
   "label": "run",
   "groundedness_%": 100.0,
   "unsupported_%": 0.0,
-  "off_syllabus_handling_%": 100.0,
+  "off_syllabus_handling_%": 93.3,
   "quiz_validity_%": 100.0,
-  "ttft_p50_ms": 0.1,
+  "ttft_p50_ms": 0.0,
   "ttft_p95_ms": 0.1,
   "cache_reduction_%": 87.0
 }

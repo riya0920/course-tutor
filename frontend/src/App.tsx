@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import ChatPane from "./components/ChatPane";
+import ExplainCard from "./components/ExplainCard";
 import ProgressPanel from "./components/ProgressPanel";
 import QuizCard from "./components/QuizCard";
 import UploadZone from "./components/UploadZone";
@@ -46,6 +47,7 @@ export default function App() {
           <UploadZone sessionId={sessionId} onUploaded={handleUploaded} />
           <QuizCard sessionId={sessionId} onGraded={refreshProgress} />
           <ProgressPanel report={report} refresh={refreshProgress} />
+          <ExplainCard sessionId={sessionId} />
         </div>
       </div>
     </div>

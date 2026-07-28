@@ -21,7 +21,7 @@ class Settings:
         # Gemini (Google AI Studio) key — accessed via Gemini's OpenAI-compatible
         # endpoint. Either GEMINI_API_KEY or GOOGLE_API_KEY works.
         self.gemini_api_key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
-        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
         self.gemini_base_url = os.getenv(
             "GEMINI_BASE_URL",
             "https://generativelanguage.googleapis.com/v1beta/openai/",

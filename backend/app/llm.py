@@ -19,6 +19,7 @@ from typing import Iterator, Optional
 
 from .config import get_settings
 from .models import Chunk, Grade, Quiz
+from .tracing import traced
 from .prompts import (
     GRADE_SYSTEM,
     OFF_SYLLABUS_CLASSIFIER,
@@ -147,7 +148,12 @@ class LLM:
             yield from self._mock_chat(message, context_chunks, result)
             return
         if self.provider == "gemini":
-            yield from self._gemini_chat(message, context_chunks, history, result)
+            # Fall back to the offline path if the provider errors (e.g. the
+            # free-tier daily quota is exhausted), so the demo never breaks.
+            try:
+                yield from self._gemini_chat(message, context_chunks, history, result)
+            except Exception:
+                yield from self._mock_chat(message, context_chunks, result)
             return
 
         context = _format_context(context_chunks)
@@ -207,6 +213,14 @@ class LLM:
     # ------------------------------------------------------------------ #
     # Gemini backend (OpenAI-compatible endpoint)
     # ------------------------------------------------------------------ #
+    def _gemini_kwargs(self) -> dict:
+        # `reasoning_effort` is only valid on Gemini 2.5 (thinking) models;
+        # sending it to 2.0 / non-thinking models errors. Turn thinking off
+        # where supported so the classifier and JSON calls stay fast.
+        if "2.5" in self.settings.gemini_model:
+            return {"reasoning_effort": "none"}
+        return {}
+
     def _gemini_messages(self, system: str, context: str, history: list[dict], user: str):
         msgs = [{"role": "system", "content": system + "\n\nCourse context:\n" + context}]
         msgs.extend(history)
@@ -221,9 +235,9 @@ class LLM:
             model=self.settings.gemini_model,
             messages=self._gemini_messages(TUTOR_SYSTEM, context, history, message),
             max_tokens=1024,
-            reasoning_effort="none",  # Gemini 2.5 thinking off: faster, predictable
             stream=True,
             stream_options={"include_usage": True},
+            **self._gemini_kwargs(),
         )
         usage = None
         for chunk in stream:
@@ -254,8 +268,8 @@ class LLM:
                     {"role": "user", "content": user},
                 ],
                 max_tokens=2048,
-                reasoning_effort="none",
                 response_format={"type": "json_object"},
+                **self._gemini_kwargs(),
             )
             raw = resp.choices[0].message.content or ""
             try:
@@ -268,37 +282,43 @@ class LLM:
     # ------------------------------------------------------------------ #
     # Off-syllabus classifier
     # ------------------------------------------------------------------ #
+    def _mock_off_syllabus(self, question: str, context_chunks: list[Chunk]) -> bool:
+        # Heuristic: off-syllabus if the question's content words barely overlap
+        # the retrieved material (robust to the hashing fallback, which gives
+        # every pair a small non-zero similarity).
+        if not context_chunks:
+            return True
+        q_words = {w for w in re.findall(r"[a-z]{4,}", question.lower())} - _STOPWORDS
+        if not q_words:
+            return False
+        corpus_words = set(
+            re.findall(r"[a-z]{4,}", " ".join(c.text for c in context_chunks).lower())
+        )
+        overlap = len(q_words & corpus_words) / len(q_words)
+        return overlap < 0.34
+
+    @traced("is_off_syllabus", run_type="llm")
     def is_off_syllabus(self, question: str, context_chunks: list[Chunk]) -> bool:
-        if self.settings.mock_mode:
-            # Heuristic: off-syllabus if the question's content words barely
-            # overlap the retrieved material (robust to the hashing fallback,
-            # which gives every pair a small non-zero similarity).
-            if not context_chunks:
-                return True
-            q_words = {
-                w for w in re.findall(r"[a-z]{4,}", question.lower())
-            } - _STOPWORDS
-            if not q_words:
-                return False
-            corpus_words = set(
-                re.findall(r"[a-z]{4,}", " ".join(c.text for c in context_chunks).lower())
-            )
-            overlap = len(q_words & corpus_words) / len(q_words)
-            return overlap < 0.34
+        if self.provider == "mock":
+            return self._mock_off_syllabus(question, context_chunks)
 
         context = _format_context(context_chunks) or "(no relevant context found)"
 
         if self.provider == "gemini":
-            resp = self._gemini.chat.completions.create(
-                model=self.settings.gemini_model,
-                max_tokens=8,
-                reasoning_effort="none",
-                messages=[
-                    {"role": "system", "content": OFF_SYLLABUS_CLASSIFIER},
-                    {"role": "user", "content": f"COURSE CONTEXT:\n{context}\n\nQUESTION: {question}"},
-                ],
-            )
-            return (resp.choices[0].message.content or "").strip().lower().startswith("no")
+            try:
+                resp = self._gemini.chat.completions.create(
+                    model=self.settings.gemini_model,
+                    max_tokens=8,
+                    messages=[
+                        {"role": "system", "content": OFF_SYLLABUS_CLASSIFIER},
+                        {"role": "user", "content": f"COURSE CONTEXT:\n{context}\n\nQUESTION: {question}"},
+                    ],
+                    **self._gemini_kwargs(),
+                )
+                return (resp.choices[0].message.content or "").strip().lower().startswith("no")
+            except Exception:
+                # Quota/error: fall back to the lexical-overlap heuristic.
+                return self._mock_off_syllabus(question, context_chunks)
 
         resp = self._client.messages.create(
             model=self.settings.tutor_model,
@@ -319,6 +339,7 @@ class LLM:
     # ------------------------------------------------------------------ #
     # Quiz generation (structured output)
     # ------------------------------------------------------------------ #
+    @traced("generate_quiz", run_type="llm")
     def generate_quiz(
         self, topic: str, difficulty: str, n: int, context_chunks: list[Chunk]
     ) -> Quiz:
@@ -337,7 +358,10 @@ class LLM:
                 + json.dumps(QUIZ_TOOL["input_schema"])
                 + '. answer_index is the 0-based index of the correct choice.'
             )
-            return self._gemini_json(QUIZ_SYSTEM, hint, Quiz)
+            try:
+                return self._gemini_json(QUIZ_SYSTEM, hint, Quiz)
+            except Exception:
+                return self._mock_quiz(topic, difficulty, n, context_chunks)
 
         return self._tool_call(system=QUIZ_SYSTEM, user=user, tool=QUIZ_TOOL, schema=Quiz)
 
@@ -374,6 +398,7 @@ class LLM:
     # ------------------------------------------------------------------ #
     # Grading (structured output)
     # ------------------------------------------------------------------ #
+    @traced("grade_answer", run_type="llm")
     def grade_answer(
         self,
         question_id: str,
@@ -408,7 +433,12 @@ class LLM:
                 + "\n\nReturn JSON matching this schema: "
                 + json.dumps(GRADE_TOOL["input_schema"])
             )
-            grade = self._gemini_json(GRADE_SYSTEM, hint, Grade)
+            try:
+                grade = self._gemini_json(GRADE_SYSTEM, hint, Grade)
+            except Exception:
+                grade = self._mock_grade(
+                    question_id, is_correct, concept, choices, correct_index, rationale
+                )
         else:
             grade = self._tool_call(
                 system=GRADE_SYSTEM, user=user, tool=GRADE_TOOL, schema=Grade

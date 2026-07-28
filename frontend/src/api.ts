@@ -132,3 +132,22 @@ export async function getProgress(sessionId: string): Promise<ProgressReport> {
   const res = await fetch(`${BASE}/progress/${sessionId}`);
   return res.json();
 }
+
+export interface Explanation {
+  concept: string;
+  model: string;
+  explanation: string;
+}
+
+export async function explainConcept(
+  sessionId: string,
+  concept: string,
+  model: "base" | "tuned"
+): Promise<Explanation> {
+  const res = await fetch(`${BASE}/explain`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, concept, model }),
+  });
+  return res.json();
+}

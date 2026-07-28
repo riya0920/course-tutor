@@ -40,6 +40,19 @@ def _load_dataset() -> list[dict]:
             line = line.strip()
             if line:
                 items.append(json.loads(line))
+    # EVAL_LIMIT caps items PER TYPE, for a quick real-provider run that stays
+    # under free-tier rate limits. Unset = use the full dataset.
+    limit = os.getenv("EVAL_LIMIT")
+    if limit:
+        n = int(limit)
+        by_type: dict[str, int] = {}
+        capped = []
+        for it in items:
+            t = it["type"]
+            if by_type.get(t, 0) < n:
+                by_type[t] = by_type.get(t, 0) + 1
+                capped.append(it)
+        return capped
     return items
 
 

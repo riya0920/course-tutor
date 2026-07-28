@@ -44,18 +44,21 @@ async def chat(req: ChatRequest):
 
         # --- input guardrail -------------------------------------------
         check = guardrails.check_input(req.session_id, req.message, chunks)
-        if check.off_syllabus:
-            redirect = (
-                "That looks outside this course's material. "
-                + check.reason
-                + " Try asking about something covered in your uploaded document."
-            )
-            for word in redirect.split(" "):
+        if check.blocked or check.off_syllabus:
+            if check.blocked:
+                message = check.reason
+            else:
+                message = (
+                    "That looks outside this course's material. "
+                    + check.reason
+                    + " Try asking about something covered in your uploaded document."
+                )
+            for word in message.split(" "):
                 yield _sse({"type": "token", "text": word + " "})
             meta = ChatMeta(
                 citations=[],
                 grounded=False,
-                off_syllabus=True,
+                off_syllabus=check.off_syllabus,
                 model=get_llm().model,
                 ttft_ms=(time.time() - t0) * 1000,
             )

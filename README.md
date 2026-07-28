@@ -10,7 +10,26 @@ Live demo: https://course-tutor.vercel.app
 
 It's preloaded with a small sample ML course, so you can try it without uploading anything. The backend runs on Render's free tier and goes to sleep when nobody's using it, so the first request after an idle spell takes 30 to 60 seconds to wake up. After that it's quick.
 
-The frontend is on Vercel, the backend on Render, and answers currently come from Gemini 2.5 Flash.
+The frontend is on Vercel, the backend on Render, and answers currently come from Gemini 2.0 Flash. The Gemini free tier is small (a couple hundred requests a day), so when it runs out the app falls back to canned answers with citations rather than erroring, and picks back up once the quota resets.
+
+## Architecture
+
+```
+Browser (React + TypeScript + Tailwind, built with Vite)
+    |
+    |  REST and Server-Sent Events
+    |
+FastAPI backend (Python 3.11)
+    /upload     parse the file, chunk it, embed, store
+    /chat       retrieve chunks, run guardrails, stream the answer, cite sources
+    /quiz       generate and grade questions (validated tool calls)
+    /progress   per-concept mastery from the grading history
+    /explain    same concept, base model vs fine-tuned model
+    |
+Vector store (ChromaDB, or an in-memory fallback)
+SQLite (quiz attempts and mastery)
+LLM (Gemini or Claude, or an offline mock)
+```
 
 ## Running it locally
 
@@ -59,20 +78,32 @@ The single flag exists so the eval harness can run the same questions with guard
 
 ### Evals
 
-`backend/evals/run_evals.py` runs a fixed set of questions (some answerable from the corpus, some off-topic, some adversarial) and reports groundedness, how often off-topic questions get correctly refused, quiz validity, latency percentiles, and the cached/uncached token split.
+`backend/evals/run_evals.py` runs a fixed set of 100 questions (70 answerable from the corpus, 20 off-topic, 10 adversarial) and reports groundedness, how often off-topic questions get correctly refused, quiz validity, latency percentiles, and the cached/uncached token split.
 
 ```bash
 cd backend
 python -m evals.run_evals --baseline    # runs guardrails off, then on, and prints the difference
 ```
 
+Running the same set with guardrails off and then on shows what the guardrails buy you. This is the deterministic baseline (the reproducible run that the CI gate checks against):
+
+| metric | guardrails off | guardrails on |
+| --- | --- | --- |
+| off-topic questions refused | 0% | 93% |
+| answers grounded in a source | 100% | 100% |
+| quizzes passing schema and answerability | 100% | 100% |
+
 GitHub Actions runs the suite on every PR and fails the build if groundedness or off-syllabus handling drops more than 2 points against the committed baseline in `evals/main_metrics.json`.
 
-The numbers you get in mock mode are placeholders. Run it with a real key to get numbers worth quoting.
+These are the offline baseline numbers, which are deterministic so CI can rely on them. Run the harness with a real provider key (and quota) to get real groundedness, latency, and token numbers. `EVAL_LIMIT=10` caps items per category for a quick real-provider run that stays under free-tier limits.
 
 ### Fine-tuning (optional)
 
-`backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune GPT-4o-mini on the explanation style, and score base vs. tuned with an LLM judge. The app has a base/tuned toggle (`POST /explain`) so you can actually compare them rather than just claim it. This part needs an OpenAI key and costs a few dollars to run.
+`backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune GPT-4o-mini on the explanation style, and score base vs. tuned with an LLM judge. The sidebar has an "Explain a concept" card with a base/tuned toggle so you can compare the two side by side rather than just claim it. This part needs an OpenAI key and costs a few dollars to run.
+
+### Tracing
+
+The LLM calls (chat classification, quiz generation, grading, source lookup) are wrapped for LangSmith tracing. It's off by default and does nothing unless you set `LANGSMITH_TRACING=true` and a `LANGSMITH_API_KEY`, so there's no dependency on it to run the app.
 
 ## Deploying
 
