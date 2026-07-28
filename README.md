@@ -1,163 +1,91 @@
-# 🎓 Course Tutor
+# Course Tutor
 
-**▶ Live demo: [course-tutor.vercel.app](https://course-tutor.vercel.app)** — preloaded with a sample course, no upload needed. (Backend on Render's free tier sleeps after ~15 min idle, so the first request may take ~30–60s to wake.)
+A study tool for your own course material. You upload a PDF or markdown file and then you can:
 
-_Frontend: Vercel · Backend: Render (`course-tutor-api-z54m.onrender.com`) · LLM: Gemini 2.5 Flash._
+- ask questions about it and get answers that stay grounded in the source, with citations back to the chunks they came from,
+- take quizzes it generates from the material, where a wrong answer gets you a short re-explanation and a follow-up question on the same idea,
+- watch a simple per-concept mastery view fill in as you go.
 
-An AI course tutor. Upload course material (PDF/Markdown), then **learn** (chat grounded in the material with citations), **get quizzed** (adaptive quizzes; wrong answers trigger targeted re-explanation + a follow-up), and **track progress** (per-concept mastery). Built with Claude Code.
+Live demo: https://course-tutor.vercel.app
 
-> **Runs with zero setup.** With no API key set, the backend boots in an **offline mock mode** (deterministic tutor/quiz/grade responses + hashing-based retrieval), so you can clone and run the whole thing end-to-end before touching a key.
+It's preloaded with a small sample ML course, so you can try it without uploading anything. The backend runs on Render's free tier and goes to sleep when nobody's using it, so the first request after an idle spell takes 30-60s to wake up. After that it's quick.
 
----
+The frontend is on Vercel, the backend on Render, and answers currently come from Gemini 2.5 Flash.
 
-## 30-second demo
+## Running it locally
 
-_Add a GIF here: upload → ask → cited answer → quiz → wrong answer → re-teach._
-
-```
-[ chat: "What is regularization?" ]
-  → streamed, grounded answer
-  → citation: [intro_to_ml.md]
-  → ✓ grounded · TTFT 5ms · cache 87%
-
-[ quiz: Gradient Descent ]
-  → 4-choice question, graded server-side
-  → wrong → misconception tag + re-explanation + follow-up
-  → Mastery panel updates: Gradient Descent 1/2
-```
-
----
-
-## Architecture
-
-```
-Browser (React 18 + TypeScript + Tailwind, Vite)
-  │  REST + SSE
-  ▼
-FastAPI (Python 3.11)
-  ├── POST /upload    → PyMuPDF → chunk → embed → vector store
-  ├── POST /chat (SSE)→ retrieve top-k → cached prompt → Claude (streaming)
-  │                     ↳ input guardrail (off-syllabus) · grounding check · citations
-  ├── POST /quiz      → structured-output quiz (Pydantic-validated)
-  ├── POST /quiz/grade→ rubric grade → misconception tag → SQLite attempt
-  ├── GET  /progress  → per-concept mastery
-  └── POST /explain   → base/tuned explanation toggle (fine-tuning demo)
-        ▼
-  Vector store (ChromaDB, with NumPy fallback)   SQLite (sessions, attempts, mastery)
-```
-
-**Stack:** React/TS/Tailwind/Vite · FastAPI + SSE · Claude (Anthropic API) — documented primary · sentence-transformers (all-MiniLM-L6-v2) · ChromaDB · PyMuPDF · Pydantic v2 · custom eval harness · GitHub Actions.
-
-**Pluggable LLM provider.** `LLM_PROVIDER=auto` (default) picks **Anthropic** if `ANTHROPIC_API_KEY` is set, else **Gemini** if `GEMINI_API_KEY` is set (via Gemini's OpenAI-compatible endpoint, thinking disabled for speed), else offline **mock**. Claude stays the documented primary because the prompt-caching cost measurement and "built with Claude Code" story depend on it; Gemini is a drop-in so the live demo can run on a Gemini key.
-
-Every dependency in the retrieval path (sentence-transformers, ChromaDB, PyMuPDF) is **optional at runtime** — the app degrades gracefully to a hashing embedder + in-memory store + text parser so it always runs.
-
----
-
-## The four things the spec cares about
-
-### 1. Prompt caching (measured)
-Each chat call is structured as a **cached prefix** (`[frozen system prompt + course-context digest]`, one `cache_control` breakpoint) plus an **uncached suffix** (the conversation). The response's `usage.cache_read_input_tokens` vs. `usage.input_tokens` is logged per request and surfaced in the UI footer (`cache 87%`). That split is the measurement behind the input-cost-reduction claim.
-
-### 2. Structured output + guardrails
-- **Output schema:** quizzes and grades come back via **forced tool use** and are validated against Pydantic models (`Quiz`, `Grade`). On validation failure: reject-and-retry once, then fail visibly — never ship malformed output to the UI.
-- **Input guardrail:** an off-syllabus classifier redirects questions the material can't answer.
-- **Grounding guardrail:** `lookup_source` must return a chunk above a similarity floor for an answer to count as supported; otherwise it's flagged ungrounded.
-
-The three checks share one `GUARDRAILS_ENABLED` switch so the eval harness can produce **OFF vs ON** baselines from the same corpus.
-
-### 3. Eval harness as a deploy gate
-`evals/run_evals.py` runs a fixed QA dataset (answerable / off-syllabus / adversarial) and reports groundedness, off-syllabus handling, quiz validity, TTFT p50/p95, and the cached/uncached token split. GitHub Actions runs it on every PR and **blocks merge** if groundedness or off-syllabus handling regresses > 2 points vs. the committed baseline (`evals/main_metrics.json`). This is "write evals like unit tests," made checkable.
+Backend:
 
 ```bash
 cd backend
-python -m evals.run_evals --baseline    # guardrails OFF then ON, prints the delta
-```
-
-### 4. Fine-tuning component (AI Fund version)
-`finetune/` generates instructor-style QA pairs (restate → explain → example → check-understanding), fine-tunes GPT-4o-mini via the OpenAI API, and evaluates base vs. tuned with an LLM-as-judge rubric. The app exposes it as a **base / tuned toggle** (`POST /explain`), so it's demoable, not just a claim.
-
-```bash
-cd backend
-python -m finetune.generate_data --n 200 --out finetune/train.jsonl  # Claude drafts; you spot-check
-export OPENAI_API_KEY=sk-...
-python -m finetune.run_finetune --train finetune/train.jsonl --wait
-python -m finetune.evaluate                                          # base vs tuned judge scores
-```
-
----
-
-## Run it locally
-
-### Backend
-```bash
-cd backend
-python -m venv .venv && source .venv/Scripts/activate   # or .venv/bin/activate on macOS/Linux
-pip install -r requirements.txt                          # or requirements-min.txt for mock mode only
-cp .env.example .env                                     # optional: add ANTHROPIC_API_KEY for real answers
+python -m venv .venv && source .venv/Scripts/activate   # .venv/bin/activate on macOS/Linux
+pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
-No key in `.env`? It runs in mock mode. Check `GET /health` — `"mock_mode": true` confirms it.
 
-### Frontend
+Frontend:
+
 ```bash
 cd frontend
 npm install
-npm run dev        # http://localhost:5180, proxies /chat, /quiz, ... to :8000
+npm run dev        # localhost:5180, proxies API calls to :8000
 ```
 
-### Or one command (Docker)
-```bash
-ANTHROPIC_API_KEY=sk-... docker compose up   # backend on :8000; run the frontend separately
-```
+You don't need an API key to run it. With no key set, the backend serves canned responses and uses a hashing-based retriever instead of real embeddings, so the whole thing works offline for development. `GET /health` tells you which mode you're in. To get real answers, put a key in `backend/.env` (copy `.env.example`) — either `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` works.
 
-### Tests + evals
+## How it works
+
+The frontend is React + TypeScript + Tailwind (Vite). The backend is FastAPI. Chat is streamed over SSE so answers show up token by token.
+
+When you send a message, the backend retrieves the most relevant chunks of your document, builds a prompt around them, and streams back the model's answer. After the answer, it runs a grounding check — it looks up whether the claims are actually supported by a chunk above a similarity threshold — and returns the citations plus some per-request stats (time to first token, token counts) that show up under each message.
+
+Document handling is the usual pipeline: PyMuPDF pulls text out of PDFs, it gets chunked with overlap, embedded, and stored. Embeddings use `all-MiniLM-L6-v2` and the store is ChromaDB when they're installed; if they're not, it falls back to a lightweight hashing embedder and an in-memory store. That fallback is what lets it run with no setup, and it's also what the free deployment uses (the full ML stack won't fit in 512MB of RAM).
+
+Quiz generation and grading go through tool calls and every result is validated against a Pydantic schema before it reaches the UI. If validation fails it retries once and then errors loudly rather than shipping something malformed. Grading is checked server-side against the stored answer key so the client can't be trusted with it, and each attempt is written to SQLite, which is where the mastery view comes from.
+
+### LLM provider
+
+`LLM_PROVIDER` defaults to `auto`, which uses Anthropic if `ANTHROPIC_API_KEY` is set, otherwise Gemini if `GEMINI_API_KEY` is set, otherwise the offline mock. Gemini goes through its OpenAI-compatible endpoint (with thinking turned off, since a yes/no classifier doesn't need it and it was eating the token budget). The live demo runs on Gemini because it's free; the prompt-caching work is Anthropic-specific, so if you set an Anthropic key you get the cached-prefix behaviour and the cache-hit numbers in the footer.
+
+### Guardrails
+
+There are three checks, all behind one `GUARDRAILS_ENABLED` flag:
+
+1. An off-syllabus classifier that redirects questions the material can't answer instead of making something up.
+2. Pydantic validation on all structured output (quizzes, grades).
+3. The grounding check described above.
+
+The single flag exists so the eval harness can run the same questions with guardrails off and on and compare.
+
+### Evals
+
+`backend/evals/run_evals.py` runs a fixed set of questions (some answerable from the corpus, some off-topic, some adversarial) and reports groundedness, how often off-topic questions get correctly refused, quiz validity, latency percentiles, and the cached/uncached token split.
+
 ```bash
 cd backend
-pytest -q                          # end-to-end smoke tests (mock mode)
-python -m evals.run_evals --baseline
+python -m evals.run_evals --baseline    # runs guardrails off, then on, and prints the difference
 ```
 
----
+GitHub Actions runs the suite on every PR and fails the build if groundedness or off-syllabus handling drops more than 2 points against the committed baseline in `evals/main_metrics.json`.
 
-## Deploy (live URL)
+The numbers you get in mock mode are placeholders. Run it with a real key to get numbers worth quoting.
 
-The repo is **one authenticated step from live** on each side:
+### Fine-tuning (optional)
 
-- **Frontend → Vercel:** import the repo, set root to `frontend/`, add env `VITE_API_BASE=https://<backend-url>`. `vercel.json` is included.
-- **Backend → Render:** "New → Blueprint" against this repo; `backend/render.yaml` provisions a Docker web service + a 1 GB disk. Set `ANTHROPIC_API_KEY` and `CORS_ORIGINS` (your Vercel URL) as secrets in the dashboard.
+`backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune GPT-4o-mini on the explanation style, and score base vs. tuned with an LLM judge. The app has a base/tuned toggle (`POST /explain`) so you can actually compare them rather than just claim it. This part needs an OpenAI key and costs a few dollars to run.
 
-Both need your accounts/keys — see [docs/DEPLOY.md](docs/DEPLOY.md) for the click-by-click.
+## Deploying
 
----
+`docs/DEPLOY.md` has the steps. Short version: push to GitHub, deploy the backend on Render (the Dockerfile and `render.yaml` are set up for the free tier), then deploy `frontend/` on Vercel with `VITE_API_BASE` pointing at the backend and the backend's `CORS_ORIGINS` pointing back at the Vercel URL.
 
-## Measurements that replace illustrative resume numbers
+## Limitations
 
-Run the harness with a real `ANTHROPIC_API_KEY` to fill these in — the moment a real number exists, the illustrative one dies.
+- No accounts or auth. State is keyed by a server-side session id.
+- One document per session.
+- Chat history lives in memory, so it resets if the backend restarts. Quiz attempts and mastery are in SQLite.
+- The free deployment doesn't have a persistent disk, so uploads reset on a cold start. The sample course re-seeds itself on boot.
+- The eval set is small right now (18 questions). It's meant to grow to ~100; the work there is checking each item by hand, not generating more.
 
-| Claim | Real measurement source | Command |
-|---|---|---|
-| median TTFT | server + client timing, p50/p95 over eval requests | `python -m evals.run_evals` |
-| unsupported answers OFF → ON | guardrails OFF vs ON eval runs | `python -m evals.run_evals --baseline` |
-| input-cost reduction | cached vs uncached token logs | shown per-request in the UI footer |
-| base → tuned judge score | base vs finetuned rubric eval | `python -m finetune.evaluate` |
+## Notes
 
-_Current committed baseline (mock mode, for the CI gate):_ see `backend/evals/main_metrics.json`.
-
----
-
-## How this was built (Claude Code)
-
-See [docs/BUILT_WITH_CLAUDE_CODE.md](docs/BUILT_WITH_CLAUDE_CODE.md) — the agent workflow, what the loop got right, and what needed correction (e.g. the `config.py` env-read-timing bug the eval baseline surfaced).
-
----
-
-## Honest limitations
-
-Deliberate cuts that made this buildable in two weekends, and reads as judgment, not weakness:
-
-- **Single-session, no auth.** State is keyed by an opaque server-side session id — no accounts, no multi-user classrooms.
-- **One corpus at a time** per session.
-- **In-memory chat history** — restarting the backend clears conversations (mastery/attempts persist in SQLite).
-- **Mock mode ≠ quality mode.** The offline fallbacks (hashing embeddings, templated tutor/quiz text) exist so it always runs; real retrieval and answers need the keys.
-- **Eval dataset is a seed** (18 items across the three categories). The spec's target is 100 (70/20/10) — the verification of each item is the actual work, so it's intentionally left to expand rather than auto-generated wholesale.
+This was built with Claude Code; `docs/BUILT_WITH_CLAUDE_CODE.md` has some notes on how it went, including a couple of bugs worth remembering (the config values were being read at import time, which quietly broke the guardrails-on/off comparison until the eval output looked suspicious).
