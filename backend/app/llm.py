@@ -153,6 +153,8 @@ class LLM:
             try:
                 yield from self._gemini_chat(message, context_chunks, history, result)
             except Exception:
+                if self.settings.llm_strict:
+                    raise
                 yield from self._mock_chat(message, context_chunks, result)
             return
 
@@ -317,6 +319,8 @@ class LLM:
                 )
                 return (resp.choices[0].message.content or "").strip().lower().startswith("no")
             except Exception:
+                if self.settings.llm_strict:
+                    raise
                 # Quota/error: fall back to the lexical-overlap heuristic.
                 return self._mock_off_syllabus(question, context_chunks)
 
@@ -361,6 +365,8 @@ class LLM:
             try:
                 return self._gemini_json(QUIZ_SYSTEM, hint, Quiz)
             except Exception:
+                if self.settings.llm_strict:
+                    raise
                 return self._mock_quiz(topic, difficulty, n, context_chunks)
 
         return self._tool_call(system=QUIZ_SYSTEM, user=user, tool=QUIZ_TOOL, schema=Quiz)
@@ -436,6 +442,8 @@ class LLM:
             try:
                 grade = self._gemini_json(GRADE_SYSTEM, hint, Grade)
             except Exception:
+                if self.settings.llm_strict:
+                    raise
                 grade = self._mock_grade(
                     question_id, is_correct, concept, choices, correct_index, rationale
                 )

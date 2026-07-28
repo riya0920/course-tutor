@@ -1,0 +1,60 @@
+name: Nightly evals (real provider)
+
+# Runs the eval harness against a real provider (Gemini) once a day, after the
+# Google free-tier quota resets (midnight Pacific), and commits the measured
+# numbers to backend/evals/latest_gemini_metrics.json. Uses a small per-category
+# sample (EVAL_LIMIT) so it stays well under the free daily quota, and strict
+# mode so a quota error fails loudly instead of silently using mock answers.
+#
+# Requires a GEMINI_API_KEY repository secret. Without it, the job skips.
+on:
+  schedule:
+    - cron: "0 9 * * *" # 09:00 UTC, comfortably after the midnight-Pacific reset
+  workflow_dispatch: {} # also runnable on demand from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements-min.txt openai
+
+      - name: Run real-provider evals
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_PROVIDER: gemini
+          LLM_STRICT: "true"
+          EVAL_LIMIT: "5"
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "No GEMINI_API_KEY secret set; skipping the real eval." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo '### Real-provider eval (Gemini)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python -m evals.run_evals --baseline --out evals/latest_gemini_metrics.json | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit updated metrics
+        run: |
+          cd ..
+          if git diff --quiet -- backend/evals/latest_gemini_metrics.json; then
+            echo "no metrics change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backend/evals/latest_gemini_metrics.json
+          git commit -m "Update real-provider eval metrics [skip ci]"
+          git push

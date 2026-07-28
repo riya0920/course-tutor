@@ -35,6 +35,11 @@ class Settings:
         # Provider selection: "auto" prefers Anthropic (the documented primary
         # for the prompt-caching story), then Gemini, then offline mock.
         self.llm_provider = os.getenv("LLM_PROVIDER", "auto").lower()
+        # Strict mode disables the fall-back-to-mock behaviour on provider
+        # errors. The app uses graceful fallback in production so the demo never
+        # breaks; evals set LLM_STRICT=true so a quota/error surfaces instead of
+        # quietly blending mock answers into "real" measured numbers.
+        self.llm_strict = os.getenv("LLM_STRICT", "false").lower() == "true"
 
         # --- Retrieval -----------------------------------------------------
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")

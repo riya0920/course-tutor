@@ -180,6 +180,7 @@ def main() -> int:
     ap.add_argument("--out", metavar="PATH", help="write ON-run metrics to JSON")
     args = ap.parse_args()
 
+    out_payload = None
     if args.baseline:
         off = _run_once("guardrails OFF", guardrails_enabled=False)
         on = _run_once("guardrails ON", guardrails_enabled=True)
@@ -189,13 +190,19 @@ def main() -> int:
             f"-> {on.unsupported_rate:.1f}% (ON)"
         )
         metrics = on
+        out_payload = {
+            "provider": on.raw.get("provider", os.getenv("LLM_PROVIDER", "")),
+            "off": off.to_row(),
+            "on": on.to_row(),
+        }
     else:
         enabled = os.getenv("GUARDRAILS_ENABLED", "true").lower() == "true"
         metrics = _run_once("run", guardrails_enabled=enabled)
         _print_table([metrics.to_row()])
+        out_payload = metrics.to_row()
 
     if args.out:
-        Path(args.out).write_text(json.dumps(metrics.to_row(), indent=2))
+        Path(args.out).write_text(json.dumps(out_payload, indent=2))
         print(f"\nwrote {args.out}")
 
     if args.gate:
