@@ -1,0 +1,13 @@
+# Deploy requirements for the free-tier Render instance (512 MB RAM).
+# Intentionally excludes torch / sentence-transformers / chromadb: those would
+# OOM a free instance. The app degrades gracefully to the hashing embedder +
+# in-memory vector store (see app/rag.py), which is plenty for the demo.
+# Gemini needs only the `openai` package (OpenAI-compatible endpoint).
+# For full local retrieval quality, use requirements.txt instead.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-multipart==0.0.20
+anthropic>=0.40.0
+openai>=1.55.0
+PyMuPDF==1.25.1
