@@ -1,6 +1,8 @@
 # 🎓 Course Tutor
 
-**Live URL:** _add after deploy_ → `https://<your-app>.vercel.app` (preloaded with a sample course — no upload needed to try it)
+**▶ Live demo: [course-tutor.vercel.app](https://course-tutor.vercel.app)** — preloaded with a sample course, no upload needed. (Backend on Render's free tier sleeps after ~15 min idle, so the first request may take ~30–60s to wake.)
+
+_Frontend: Vercel · Backend: Render (`course-tutor-api-z54m.onrender.com`) · LLM: Gemini 2.5 Flash._
 
 An AI course tutor. Upload course material (PDF/Markdown), then **learn** (chat grounded in the material with citations), **get quizzed** (adaptive quizzes; wrong answers trigger targeted re-explanation + a follow-up), and **track progress** (per-concept mastery). Built with Claude Code.
 
