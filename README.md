@@ -97,6 +97,15 @@ GitHub Actions runs the suite on every PR and fails the build if groundedness or
 
 These are the offline baseline numbers, which are deterministic so CI can rely on them. Run the harness with a real provider key (and quota) to get real groundedness, latency, and token numbers. `EVAL_LIMIT=10` caps items per category for a quick real-provider run that stays under free-tier limits.
 
+### Prompt caching
+
+The chat call is structured so the cached part (system prompt plus a stable course digest) stays identical from turn to turn, and only the retrieved excerpts and the question change. On Claude that lets prompt caching reuse the prefix. Measured over a 10-turn session on Claude Sonnet (`python -m evals.caching_demo`):
+
+- about 40% of input tokens are served from cache after the first turn,
+- roughly 36% lower input cost for the session (cache reads are billed at a tenth of the normal input price).
+
+The caching prefix has to clear the model's minimum cacheable length (1024 tokens on Sonnet, 2048 on Haiku), so with a small corpus this needs Sonnet or larger. Caching is Anthropic-specific; on Gemini or in mock mode the footer just shows 0%.
+
 ### Fine-tuning (optional)
 
 `backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune GPT-4o-mini on the explanation style, and score base vs. tuned with an LLM judge. The sidebar has an "Explain a concept" card with a base/tuned toggle so you can compare the two side by side rather than just claim it. This part needs an OpenAI key and costs a few dollars to run.

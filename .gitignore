@@ -17,6 +17,8 @@ eval_data/
 # Secrets
 .env
 backend/.env
+backend/anthropic_key.txt
+*.key
 
 # Node / frontend
 node_modules/

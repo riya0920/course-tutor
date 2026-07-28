@@ -219,8 +219,10 @@ class LLM:
         # simulate streaming
         for word in text.split(" "):
             yield word + " "
+        # Mock mode has no real caching; report 0 cached so the UI doesn't
+        # display a fabricated cache-hit percentage.
         result.usage = Usage(
-            cached_input_tokens=800, uncached_input_tokens=120, output_tokens=len(text.split())
+            cached_input_tokens=0, uncached_input_tokens=120, output_tokens=len(text.split())
         )
 
     # ------------------------------------------------------------------ #
