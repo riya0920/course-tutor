@@ -12,6 +12,9 @@ It's preloaded with a small sample ML course, so you can try it without uploadin
 
 The frontend is on Vercel, the backend on Render, and answers currently come from Gemini 2.0 Flash. The Gemini free tier is small (a couple hundred requests a day), so when it runs out the app falls back to canned answers with citations rather than erroring, and picks back up once the quota resets.
 
+<!-- Demo GIF: record the flow in docs/DEMO_SHOTLIST.md, save it as docs/demo.gif, then uncomment the next line. -->
+<!-- ![Course Tutor demo](docs/demo.gif) -->
+
 ## Architecture
 
 ```
