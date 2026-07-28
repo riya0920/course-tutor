@@ -29,8 +29,7 @@ frontend/tsconfig.tsbuildinfo
 # Eval run artifacts (the committed baseline is evals/main_metrics.json)
 current_metrics.json
 
-# Fine-tune artifacts
-backend/finetune/train.jsonl
+# Fine-tune artifacts (train.jsonl is committed so the Colab notebook can fetch it)
 backend/finetune/heldout.jsonl
 
 # OS / editor

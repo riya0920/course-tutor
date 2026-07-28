@@ -108,7 +108,9 @@ The caching prefix has to clear the model's minimum cacheable length (1024 token
 
 ### Fine-tuning (optional)
 
-`backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune a small model on the explanation style, and score base vs. tuned with an LLM judge. The sidebar has an "Explain a concept" card with a base/tuned toggle so you can compare the two side by side. Data generation and the judge eval both run; the training step targeted OpenAI's GPT-4o-mini, but OpenAI has since wound down self-serve fine-tuning, so completing the run now needs a provider that still offers it (Gemini or Vertex tuning, Together, Fireworks, etc.). The scripts are written against the OpenAI SDK and would point at any OpenAI-compatible fine-tuning endpoint.
+`backend/finetune/` has scripts to generate instructor-style QA pairs from the corpus, fine-tune a small model on the explanation style, and score base vs. tuned. The sidebar has an "Explain a concept" card with a base/tuned toggle so you can compare the two side by side.
+
+There are two ways to run the training. The OpenAI SDK scripts (`generate_data.py`, `run_finetune.py`, `evaluate.py`) targeted GPT-4o-mini, but OpenAI has since wound down self-serve fine-tuning, so that path needs a provider that still offers it. The self-contained path is `finetune/colab_finetune.ipynb`: a Colab notebook that LoRA fine-tunes Qwen2.5-0.5B on the generated pairs using a free GPU and scores base vs. tuned on a structure rubric. Open it in Colab, set a GPU runtime, and run all (about 15-20 minutes).
 
 ### Tracing
 
