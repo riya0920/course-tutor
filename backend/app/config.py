@@ -18,11 +18,23 @@ class Settings:
         # --- LLM -----------------------------------------------------------
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        # Gemini (Google AI Studio) key — accessed via Gemini's OpenAI-compatible
+        # endpoint. Either GEMINI_API_KEY or GOOGLE_API_KEY works.
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
+        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.gemini_base_url = os.getenv(
+            "GEMINI_BASE_URL",
+            "https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
         # Opus 5 by default; set TUTOR_MODEL=claude-sonnet-5 to trade some
         # quality for cost on high-volume workloads.
         self.tutor_model = os.getenv("TUTOR_MODEL", "claude-opus-5")
         self.openai_base_model = os.getenv("OPENAI_BASE_MODEL", "gpt-4o-mini")
         self.finetuned_model = os.getenv("FINETUNED_MODEL", "")
+
+        # Provider selection: "auto" prefers Anthropic (the documented primary
+        # for the prompt-caching story), then Gemini, then offline mock.
+        self.llm_provider = os.getenv("LLM_PROVIDER", "auto").lower()
 
         # --- Retrieval -----------------------------------------------------
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -48,10 +60,26 @@ class Settings:
         os.makedirs(self.chroma_dir, exist_ok=True)
 
     @property
+    def provider(self) -> str:
+        """Resolved LLM provider: 'anthropic' | 'gemini' | 'mock'."""
+        if self.llm_provider == "anthropic":
+            return "anthropic" if self.anthropic_api_key else "mock"
+        if self.llm_provider == "gemini":
+            return "gemini" if self.gemini_api_key else "mock"
+        if self.llm_provider == "mock":
+            return "mock"
+        # auto
+        if self.anthropic_api_key:
+            return "anthropic"
+        if self.gemini_api_key:
+            return "gemini"
+        return "mock"
+
+    @property
     def mock_mode(self) -> bool:
-        """True when no Anthropic key is configured: the app serves
+        """True when no LLM provider is configured: the app serves
         deterministic canned responses so it runs end-to-end offline."""
-        return not self.anthropic_api_key
+        return self.provider == "mock"
 
 
 @lru_cache

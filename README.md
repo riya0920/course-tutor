@@ -44,7 +44,9 @@ FastAPI (Python 3.11)
   Vector store (ChromaDB, with NumPy fallback)   SQLite (sessions, attempts, mastery)
 ```
 
-**Stack:** React/TS/Tailwind/Vite · FastAPI + SSE · Claude (Anthropic API) · sentence-transformers (all-MiniLM-L6-v2) · ChromaDB · PyMuPDF · Pydantic v2 · custom eval harness · GitHub Actions.
+**Stack:** React/TS/Tailwind/Vite · FastAPI + SSE · Claude (Anthropic API) — documented primary · sentence-transformers (all-MiniLM-L6-v2) · ChromaDB · PyMuPDF · Pydantic v2 · custom eval harness · GitHub Actions.
+
+**Pluggable LLM provider.** `LLM_PROVIDER=auto` (default) picks **Anthropic** if `ANTHROPIC_API_KEY` is set, else **Gemini** if `GEMINI_API_KEY` is set (via Gemini's OpenAI-compatible endpoint, thinking disabled for speed), else offline **mock**. Claude stays the documented primary because the prompt-caching cost measurement and "built with Claude Code" story depend on it; Gemini is a drop-in so the live demo can run on a Gemini key.
 
 Every dependency in the retrieval path (sentence-transformers, ChromaDB, PyMuPDF) is **optional at runtime** — the app degrades gracefully to a hashing embedder + in-memory store + text parser so it always runs.
 

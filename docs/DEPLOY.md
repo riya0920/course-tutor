@@ -13,7 +13,7 @@ gh repo create course-tutor --public --source=. --push   # or create on github.c
 ## 2. Backend → Render (free tier)
 1. Render dashboard → **New → Blueprint** → pick this repo. It reads `backend/render.yaml`.
 2. Set these environment variables (marked `sync: false` in the blueprint) in the dashboard:
-   - `ANTHROPIC_API_KEY` — your key (or leave empty to deploy in mock mode).
+   - **One LLM key** (or neither for mock mode): `ANTHROPIC_API_KEY` for Claude, **or** `GEMINI_API_KEY` for Gemini. `LLM_PROVIDER=auto` picks whichever is present.
    - `CORS_ORIGINS` — your Vercel URL, e.g. `https://course-tutor.vercel.app` (add it after step 3).
 3. Deploy. Confirm `https://<backend>.onrender.com/health` returns `{"status":"ok"}`.
 

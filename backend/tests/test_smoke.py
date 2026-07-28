@@ -10,7 +10,9 @@ from fastapi.testclient import TestClient
 
 # Isolate storage per test run before importing the app.
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="tutor-test-"))
-os.environ.pop("ANTHROPIC_API_KEY", None)  # force mock mode
+# Force offline mock mode so tests are deterministic regardless of any
+# provider keys present in the ambient environment.
+os.environ["LLM_PROVIDER"] = "mock"
 
 from app.main import app  # noqa: E402
 

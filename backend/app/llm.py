@@ -109,15 +109,29 @@ def _format_context(chunks: list[Chunk]) -> str:
 class LLM:
     def __init__(self) -> None:
         self.settings = get_settings()
+        self.provider = self.settings.provider
         self._client = None
-        if not self.settings.mock_mode:
+        self._gemini = None
+        if self.provider == "anthropic":
             import anthropic
 
             self._client = anthropic.Anthropic(api_key=self.settings.anthropic_api_key)
+        elif self.provider == "gemini":
+            # Gemini via its OpenAI-compatible endpoint (uses the openai SDK).
+            from openai import OpenAI
+
+            self._gemini = OpenAI(
+                api_key=self.settings.gemini_api_key,
+                base_url=self.settings.gemini_base_url,
+            )
 
     @property
     def model(self) -> str:
-        return "mock" if self.settings.mock_mode else self.settings.tutor_model
+        if self.provider == "anthropic":
+            return self.settings.tutor_model
+        if self.provider == "gemini":
+            return self.settings.gemini_model
+        return "mock"
 
     # ------------------------------------------------------------------ #
     # Chat (streaming)
@@ -129,8 +143,11 @@ class LLM:
         history: list[dict],
         result: ChatResult,
     ) -> Iterator[str]:
-        if self.settings.mock_mode:
+        if self.provider == "mock":
             yield from self._mock_chat(message, context_chunks, result)
+            return
+        if self.provider == "gemini":
+            yield from self._gemini_chat(message, context_chunks, history, result)
             return
 
         context = _format_context(context_chunks)
@@ -188,6 +205,67 @@ class LLM:
         )
 
     # ------------------------------------------------------------------ #
+    # Gemini backend (OpenAI-compatible endpoint)
+    # ------------------------------------------------------------------ #
+    def _gemini_messages(self, system: str, context: str, history: list[dict], user: str):
+        msgs = [{"role": "system", "content": system + "\n\nCourse context:\n" + context}]
+        msgs.extend(history)
+        msgs.append({"role": "user", "content": user})
+        return msgs
+
+    def _gemini_chat(
+        self, message: str, context_chunks: list[Chunk], history: list[dict], result: ChatResult
+    ) -> Iterator[str]:
+        context = _format_context(context_chunks)
+        stream = self._gemini.chat.completions.create(
+            model=self.settings.gemini_model,
+            messages=self._gemini_messages(TUTOR_SYSTEM, context, history, message),
+            max_tokens=1024,
+            reasoning_effort="none",  # Gemini 2.5 thinking off: faster, predictable
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        usage = None
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+        if usage:
+            cached = 0
+            details = getattr(usage, "prompt_tokens_details", None)
+            if details is not None:
+                cached = getattr(details, "cached_tokens", 0) or 0
+            result.usage = Usage(
+                cached_input_tokens=cached,
+                uncached_input_tokens=(usage.prompt_tokens or 0) - cached,
+                output_tokens=usage.completion_tokens or 0,
+            )
+
+    def _gemini_json(self, system: str, user: str, schema):
+        """Structured output via Gemini JSON mode + Pydantic validation,
+        reject-and-retry once."""
+        last_err = None
+        for _ in range(2):
+            resp = self._gemini.chat.completions.create(
+                model=self.settings.gemini_model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                max_tokens=2048,
+                reasoning_effort="none",
+                response_format={"type": "json_object"},
+            )
+            raw = resp.choices[0].message.content or ""
+            try:
+                return schema.model_validate(json.loads(raw))
+            except Exception as e:
+                last_err = str(e)
+                user = user + f"\n\nYour previous output was invalid: {e}. Return valid JSON."
+        raise ValueError(f"structured output failed validation twice: {last_err}")
+
+    # ------------------------------------------------------------------ #
     # Off-syllabus classifier
     # ------------------------------------------------------------------ #
     def is_off_syllabus(self, question: str, context_chunks: list[Chunk]) -> bool:
@@ -209,6 +287,19 @@ class LLM:
             return overlap < 0.34
 
         context = _format_context(context_chunks) or "(no relevant context found)"
+
+        if self.provider == "gemini":
+            resp = self._gemini.chat.completions.create(
+                model=self.settings.gemini_model,
+                max_tokens=8,
+                reasoning_effort="none",
+                messages=[
+                    {"role": "system", "content": OFF_SYLLABUS_CLASSIFIER},
+                    {"role": "user", "content": f"COURSE CONTEXT:\n{context}\n\nQUESTION: {question}"},
+                ],
+            )
+            return (resp.choices[0].message.content or "").strip().lower().startswith("no")
+
         resp = self._client.messages.create(
             model=self.settings.tutor_model,
             max_tokens=8,
@@ -231,7 +322,7 @@ class LLM:
     def generate_quiz(
         self, topic: str, difficulty: str, n: int, context_chunks: list[Chunk]
     ) -> Quiz:
-        if self.settings.mock_mode:
+        if self.provider == "mock":
             return self._mock_quiz(topic, difficulty, n, context_chunks)
 
         context = _format_context(context_chunks)
@@ -239,10 +330,16 @@ class LLM:
             f"Topic: {topic}\nDifficulty: {difficulty}\nNumber of questions: {n}\n\n"
             f"Course material:\n{context}"
         )
-        data = self._tool_call(
-            system=QUIZ_SYSTEM, user=user, tool=QUIZ_TOOL, schema=Quiz
-        )
-        return data
+        if self.provider == "gemini":
+            hint = (
+                user
+                + "\n\nReturn JSON matching this schema: "
+                + json.dumps(QUIZ_TOOL["input_schema"])
+                + '. answer_index is the 0-based index of the correct choice.'
+            )
+            return self._gemini_json(QUIZ_SYSTEM, hint, Quiz)
+
+        return self._tool_call(system=QUIZ_SYSTEM, user=user, tool=QUIZ_TOOL, schema=Quiz)
 
     def _mock_quiz(
         self, topic: str, difficulty: str, n: int, chunks: list[Chunk]
@@ -289,7 +386,7 @@ class LLM:
         context_chunks: list[Chunk],
     ) -> Grade:
         is_correct = chosen_index == correct_index
-        if self.settings.mock_mode:
+        if self.provider == "mock":
             return self._mock_grade(
                 question_id, is_correct, concept, choices, correct_index, rationale
             )
@@ -305,9 +402,17 @@ class LLM:
             f"The learner was {'CORRECT' if is_correct else 'INCORRECT'}.\n\n"
             f"Course material:\n{context}"
         )
-        grade = self._tool_call(
-            system=GRADE_SYSTEM, user=user, tool=GRADE_TOOL, schema=Grade
-        )
+        if self.provider == "gemini":
+            hint = (
+                user
+                + "\n\nReturn JSON matching this schema: "
+                + json.dumps(GRADE_TOOL["input_schema"])
+            )
+            grade = self._gemini_json(GRADE_SYSTEM, hint, Grade)
+        else:
+            grade = self._tool_call(
+                system=GRADE_SYSTEM, user=user, tool=GRADE_TOOL, schema=Grade
+            )
         # Never let the model overrule the deterministic correctness check.
         grade.correct = is_correct
         grade.question_id = question_id

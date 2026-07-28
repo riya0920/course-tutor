@@ -43,10 +43,13 @@ app.include_router(explain.router)
 
 @app.get("/health")
 def health():
+    from .llm import get_llm
+
     return {
         "status": "ok",
+        "provider": settings.provider,
         "mock_mode": settings.mock_mode,
-        "model": "mock" if settings.mock_mode else settings.tutor_model,
+        "model": get_llm().model,
         "guardrails_enabled": settings.guardrails_enabled,
     }
 
